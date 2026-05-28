@@ -193,27 +193,53 @@
   }
 
   // ── Fetch Product Detail Pages ──────────────────────────────────────────
+  // Fetches and parses directly in the content script (same-origin, has DOMParser)
   async function fetchProductDetails(products) {
-    // Fetch details for up to 10 products in parallel (with limit)
     const toFetch = products.slice(0, 15);
-    const promises = toFetch.map(
-      (p) =>
-        new Promise((resolve) => {
-          chrome.runtime.sendMessage(
-            { type: "fetchDetail", url: p.url },
-            (response) => {
-              if (response && response.ok) {
-                p.description = response.data.description || "";
-                p.bullets = response.data.bullets || "";
-                p.color = response.data.color || "";
-              }
-              resolve();
-            }
-          );
-        })
-    );
 
-    await Promise.all(promises);
+    // Batch in groups of 3 to avoid overwhelming Amazon
+    for (let i = 0; i < toFetch.length; i += 3) {
+      const batch = toFetch.slice(i, i + 3);
+      await Promise.all(batch.map((p) => fetchSingleDetail(p)));
+    }
+  }
+
+  async function fetchSingleDetail(product) {
+    try {
+      const resp = await fetch(product.url, { credentials: "same-origin" });
+      if (!resp.ok) return;
+      const html = await resp.text();
+      const doc = new DOMParser().parseFromString(html, "text/html");
+
+      // Description
+      const descEl = doc.querySelector("#productDescription p, #productDescription, #productDescription_feature_div");
+      if (descEl) product.description = descEl.textContent.trim().slice(0, 500);
+
+      // Bullet points
+      const bulletEls = doc.querySelectorAll("#feature-bullets ul li span.a-list-item");
+      if (bulletEls.length) {
+        product.bullets = Array.from(bulletEls)
+          .map((el) => el.textContent.trim())
+          .filter((t) => t.length > 5)
+          .join(" | ")
+          .slice(0, 500);
+      }
+
+      // Color — search product overview table rows
+      const overviewRows = doc.querySelectorAll("#productOverview_feature_div tr, #detailBullets_feature_div li");
+      for (const row of overviewRows) {
+        const text = row.textContent.toLowerCase();
+        if (text.includes("color") || text.includes("colour")) {
+          const spans = row.querySelectorAll("td span, span.a-text-bold + span");
+          if (spans.length >= 2) {
+            product.color = spans[spans.length - 1].textContent.trim();
+            break;
+          }
+        }
+      }
+    } catch (err) {
+      console.log(`[Search Re-Ranker] Could not fetch details for ${product.asin}:`, err.message);
+    }
   }
 
   // ── Call Re-Rank API ────────────────────────────────────────────────────
