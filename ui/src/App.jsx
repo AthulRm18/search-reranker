@@ -1,8 +1,71 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import axios from "axios"
 import { Search, Shield, Zap, TrendingUp, ArrowUp, ArrowDown, Minus, Loader2 } from "lucide-react"
 
-// ── animated card ──────────────────────────────────────────────────────────
+// ── pipeline steps (the real-time ML visualization) ───────────────────────
+const STEPS = [
+  { label: "Feature Extraction", desc: "11 lexical features" },
+  { label: "LambdaMART",         desc: "Relevance scoring" },
+  { label: "Trust Scoring",      desc: "Isolation Forest" },
+  { label: "NSGA-II Optimize",   desc: "Multi-objective" },
+  { label: "Re-Ranking",         desc: "Final ordering" },
+]
+
+function PipelineBar({ step }) {
+  if (step < 0) return null
+  return (
+    <div className="mb-4 p-3 bg-white border border-gray-200 rounded-xl shadow-sm">
+      <div className="flex items-center gap-1">
+        {STEPS.map((s, i) => {
+          const done    = step > i
+          const active  = step === i
+          const pending = step < i
+          return (
+            <div key={s.label} className="flex items-center flex-1">
+              <div className={`flex-1 rounded-lg px-2 py-1.5 text-center transition-all duration-300 ${
+                done   ? "bg-emerald-50 border border-emerald-200" :
+                active ? "bg-blue-50 border border-blue-300 shadow-sm" :
+                         "bg-gray-50 border border-gray-100"
+              }`}>
+                <p className={`text-[10px] font-semibold ${
+                  done ? "text-emerald-600" : active ? "text-blue-600" : "text-gray-400"
+                }`}>
+                  {done ? "✓ " : active ? "⟳ " : ""}{s.label}
+                </p>
+                {active && (
+                  <p className="text-[8px] text-blue-400 mt-0.5">{s.desc}</p>
+                )}
+              </div>
+              {i < STEPS.length - 1 && (
+                <div className={`w-3 h-0.5 mx-0.5 rounded ${done ? "bg-emerald-300" : "bg-gray-200"}`} />
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── animated counter ──────────────────────────────────────────────────────
+function AnimatedNum({ value, decimals = 4 }) {
+  const [display, setDisplay] = useState(0)
+  const raf = useRef(null)
+  useEffect(() => {
+    const target = typeof value === "number" ? value : parseFloat(value) || 0
+    const start = performance.now()
+    const run = (now) => {
+      const p = Math.min((now - start) / 900, 1)
+      setDisplay(target * (1 - Math.pow(1 - p, 3)))
+      if (p < 1) raf.current = requestAnimationFrame(run)
+    }
+    raf.current = requestAnimationFrame(run)
+    return () => cancelAnimationFrame(raf.current)
+  }, [value])
+  return <>{display.toFixed(decimals)}</>
+}
+
+// ── animated card (original structure kept) ───────────────────────────────
 function ProductCard({ product, rank, showScores, animating, delay }) {
   const [visible, setVisible] = useState(false)
 
@@ -45,8 +108,12 @@ function ProductCard({ product, rank, showScores, animating, delay }) {
 
             {showScores && (
               <div className="mt-2 space-y-1">
-                <ScoreRow label="Relevance" value={product.relevance_score ?? 0} color="bg-blue-400" />
-                <ScoreRow label="Trust"     value={product.trust_score ?? 0}     color="bg-emerald-400" />
+                <ScoreRow label="Relevance" value={product.relevance_score ?? 0} color="bg-blue-400" delay={delay} />
+                <ScoreRow label="Trust"     value={product.trust_score ?? 0}     color="bg-emerald-400" delay={delay + 120} />
+                <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-400">
+                  <span>Final: <span className="font-mono font-semibold text-gray-600">{(product.final_score ?? 0).toFixed(4)}</span></span>
+                  <span>Was #{product.original_rank}</span>
+                </div>
               </div>
             )}
           </div>
@@ -64,9 +131,9 @@ function ProductCard({ product, rank, showScores, animating, delay }) {
   )
 }
 
-function ScoreRow({ label, value, color }) {
+function ScoreRow({ label, value, color, delay = 0 }) {
   const [width, setWidth] = useState(0)
-  useEffect(() => { setTimeout(() => setWidth(value * 100), 100) }, [value])
+  useEffect(() => { setTimeout(() => setWidth(value * 100), 100 + delay) }, [value, delay])
   return (
     <div>
       <div className="flex justify-between text-xs text-gray-400 mb-0.5">
@@ -75,26 +142,28 @@ function ScoreRow({ label, value, color }) {
       <div className="w-full bg-gray-100 rounded-full h-1.5">
         <div
           className={`h-1.5 rounded-full ${color} transition-all duration-700 ease-out`}
-          style={{ width: `${width}%` }}
+          style={{ width: `${width}%`, transitionDelay: `${delay}ms` }}
         />
       </div>
     </div>
   )
 }
 
-function MetricCard({ label, value, color, icon: Icon }) {
+function MetricCard({ label, value, color, icon: Icon, numeric = false }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
       <div className="flex items-center gap-1.5 mb-1">
         <Icon size={13} className={color} />
         <span className="text-xs text-gray-500">{label}</span>
       </div>
-      <p className={`text-xl font-bold ${color}`}>{value}</p>
+      <p className={`text-xl font-bold ${color}`}>
+        {numeric ? <AnimatedNum value={value} /> : value}
+      </p>
     </div>
   )
 }
 
-// ── main app ───────────────────────────────────────────────────────────────
+// ── main app (original structure, + pipeline + animated numbers) ──────────
 export default function App() {
   const [query,       setQuery]       = useState("wireless headphones")
   const [mode,        setMode]        = useState("balanced")
@@ -106,6 +175,14 @@ export default function App() {
   const [animating,   setAnimating]   = useState(false)
   const [error,       setError]       = useState(null)
   const [totalMatches,setTotalMatches]= useState(0)
+  const [pipeStep,    setPipeStep]    = useState(-1)
+
+  // step through pipeline with delays
+  const runPipeline = useCallback((i, cb) => {
+    if (i >= STEPS.length) { cb(); return }
+    setPipeStep(i)
+    setTimeout(() => runPipeline(i + 1, cb), 420)
+  }, [])
 
   const handleSearch = async () => {
     if (!query.trim()) return
@@ -133,21 +210,22 @@ export default function App() {
     setAnimating(false)
 
     try {
-      const res = await axios.post("/api/rerank", {
-        query,
-        products: original,
-        mode,
+      const res = await axios.post("/api/rerank", { query, products: original, mode })
+
+      // animate pipeline, THEN show results
+      runPipeline(0, () => {
+        setTimeout(() => {
+          setReranked(res.data.results)
+          setMetrics(res.data)
+          setAnimating(true)
+          setLoading(false)
+          setPipeStep(-1)
+        }, 300)
       })
-      // small delay so user sees transition
-      setTimeout(() => {
-        setReranked(res.data.results)
-        setMetrics(res.data)
-        setAnimating(true)
-        setLoading(false)
-      }, 400)
     } catch {
       setError("Re-rank failed")
       setLoading(false)
+      setPipeStep(-1)
     }
   }
 
@@ -210,11 +288,14 @@ export default function App() {
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">{error}</div>
         )}
 
+        {/* ── live pipeline ── */}
+        <PipelineBar step={pipeStep} />
+
         {/* metrics row */}
         {metrics && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-            <MetricCard label="Baseline NDCG@10"   value={metrics.baseline_ndcg}  color="text-gray-600"    icon={TrendingUp} />
-            <MetricCard label="Optimized NDCG@10"  value={metrics.optimized_ndcg} color="text-blue-600"    icon={TrendingUp} />
+            <MetricCard label="Baseline NDCG@10"   value={metrics.baseline_ndcg}  color="text-gray-600"    icon={TrendingUp} numeric />
+            <MetricCard label="Optimized NDCG@10"  value={metrics.optimized_ndcg} color="text-blue-600"    icon={TrendingUp} numeric />
             <MetricCard label="Sponsored (original)"  value={`${sponsoredOriginal}/10`} color="text-yellow-600" icon={Zap} />
             <MetricCard label="Sponsored (reranked)"  value={`${sponsoredReranked}/5`}  color="text-emerald-600" icon={Shield} />
           </div>
