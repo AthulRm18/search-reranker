@@ -115,3 +115,98 @@ def extract_features(query: str, product: Product) -> dict:
         "f_title_query_len_ratio": len(t.split()) / (len(q.split()) + 1),
     }
 
+
+# helper-----
+def ndcg_at_k(scores, k=10):
+    scores = np.array(scores[:k])
+    ideal  = np.sort(scores)[::-1]
+    def dcg(s):
+        return sum((2**r - 1) / np.log2(i + 2) for i, r in enumerate(s))
+    idcg = dcg(ideal)
+    return dcg(scores) / idcg if idcg > 0 else 0.0
+
+
+# main endpoint
+@app.post("/rerank", response_model=RankResponse)
+def rerank(req: RankRequest):
+    if not req.products:
+        raise HTTPException(status_code=400, detail="No products provided")
+
+    # extract features + predict relevance
+    features, trust_scores = [], []
+    for p in req.products:
+        feat = extract_features(req.query, p)
+        features.append([feat[f] for f in FEATURE_COLS])
+        trust_scores.append(trust_map.get(p.product_id, 0.5))
+
+    X             = np.array(features)
+    relevance     = model.predict(X)
+    trust_scores  = np.array(trust_scores)
+
+    # normalize
+    def norm(x):
+        r = x.max() - x.min()
+        return (x - x.min()) / r if r > 0 else np.ones_like(x) * 0.5
+
+    rel_norm   = norm(relevance)
+    trust_norm = norm(trust_scores)
+
+    # sponsored penalty
+    sponsored_penalty = np.array([0.7 if p.sponsored else 1.0 for p in req.products])
+
+    # mode-based weighting
+    weights = {
+        "balanced":  (0.6, 0.2, 0.2),
+        "relevance": (0.9, 0.05, 0.05),
+        "fair":      (0.4, 0.3, 0.3),
+    }.get(req.mode, (0.6, 0.2, 0.2))
+
+    w_rel, w_trust, w_penalty = weights
+    final_scores = (
+        w_rel   * rel_norm +
+        w_trust * trust_norm +
+        w_penalty * (sponsored_penalty - 1 + 1)
+    ) * sponsored_penalty
+
+    # rank
+    optimized_order = np.argsort(final_scores)[::-1]
+
+    # compute ndcg
+    baseline_relevance  = [rel_norm[p.original_rank - 1]
+                           if p.original_rank <= len(rel_norm)
+                           else 0.0 for p in req.products]
+    optimized_relevance = [rel_norm[i] for i in optimized_order]
+
+    baseline_ndcg  = ndcg_at_k(sorted(baseline_relevance, reverse=True))
+    optimized_ndcg = ndcg_at_k(optimized_relevance)
+    bias_reduction = float(np.mean(sponsored_penalty[optimized_order[:10]] == 1.0) -
+                           np.mean([p.sponsored for p in req.products[:10]]))
+
+    # build response
+    results = []
+    for new_rank, idx in enumerate(optimized_order, 1):
+        p = req.products[idx]
+        results.append(RankedProduct(
+            product_id=p.product_id,
+            product_title=p.product_title,
+            original_rank=p.original_rank,
+            new_rank=new_rank,
+            rank_change=p.original_rank - new_rank,
+            relevance_score=float(rel_norm[idx]),
+            trust_score=float(trust_norm[idx]),
+            final_score=float(final_scores[idx]),
+            sponsored=p.sponsored,
+        ))
+
+    return RankResponse(
+        query=req.query,
+        mode=req.mode,
+        results=results,
+        baseline_ndcg=round(baseline_ndcg, 4),
+        optimized_ndcg=round(optimized_ndcg, 4),
+        bias_reduction=round(bias_reduction * 100, 1),
+    )
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "model": "ranker_v1.lgb", "features": len(FEATURE_COLS)}
