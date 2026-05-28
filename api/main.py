@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import List, Optional
 import re
-
+import pyarrow.parquet as pq
 
 app = FastAPI(
     title="Search Re-Ranker API",
@@ -39,6 +39,13 @@ try:
     trust_map = dict(zip(trust_df["ProductId"], trust_df["trust_score"]))
 except:
     trust_map = {}
+
+print("Loading ESCI products for search...")
+products_df = pd.read_parquet("data/raw/esci/products.parquet")
+products_df = products_df[products_df["product_locale"] == "us"].copy()
+products_df = products_df.dropna(subset=["product_title"])
+products_df["product_title_lower"] = products_df["product_title"].str.lower()
+print(f"Loaded {len(products_df):,} US products")
 
 print("API ready.")
 
