@@ -217,3 +217,43 @@ def rerank(req: RankRequest):
 @app.get("/health")
 def health():
     return {"status": "ok", "model": "ranker_v1.lgb", "features": len(FEATURE_COLS)}
+
+@app.get("/search")
+def search_products(q: str, n: int = 10):
+    """Search real ESCI products and return with simulated sponsored injection"""
+    q_lower = q.lower()
+    q_terms = set(q_lower.split())
+
+    # score by term overlap
+    def score(title):
+        t = set(str(title).split())
+        return len(q_terms & t) / len(q_terms) if q_terms else 0
+
+    mask = products_df["product_title_lower"].apply(
+        lambda t: any(term in str(t) for term in q_terms)
+    )
+    matches = products_df[mask].copy()
+
+    if len(matches) < n:
+        return {"products": [], "error": "Not enough matches"}
+
+    matches["match_score"] = matches["product_title_lower"].apply(score)
+    matches = matches.sort_values("match_score", ascending=False).head(50)
+    matches = matches.sample(min(n, len(matches)), random_state=42)
+
+    products = []
+    for i, (_, row) in enumerate(matches.iterrows()):
+        # simulate Amazon: inject sponsored at ranks 1,2,4 (top positions)
+        sponsored = i in [0, 1, 3]
+        products.append({
+            "product_id":           row["product_id"],
+            "product_title":        row["product_title"][:120],
+            "product_description":  str(row["product_description"] or "")[:300],
+            "product_bullet_point": str(row["product_bullet_point"] or "")[:300],
+            "product_brand":        str(row["product_brand"] or ""),
+            "product_color":        str(row["product_color"] or ""),
+            "original_rank":        i + 1,
+            "sponsored":            sponsored,
+        })
+
+    return {"products": products, "total_matches": int(mask.sum())}
