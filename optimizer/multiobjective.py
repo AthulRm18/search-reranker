@@ -106,3 +106,65 @@ class RankingOptimizationProblem(Problem):
         g1 = np.abs(x.sum(axis=1) - n_items) - 0.1
         g2 = (x - 3.0).max(axis=1)
         out["G"] = np.column_stack([g1, g2])
+
+# ── run NSGA-II ────────────────────────────────────────────────────────────
+problem = RankingOptimizationProblem()
+
+algorithm = NSGA2(
+    pop_size=100,
+    sampling=FloatRandomSampling(),
+    crossover=SBX(prob=0.9, eta=15),
+    mutation=PM(eta=20),
+    eliminate_duplicates=True,
+)
+
+termination = get_termination("n_gen", 50)
+
+result = minimize(
+    problem,
+    algorithm,
+    termination,
+    seed=42,
+    verbose=True,
+)
+
+print(f"\nPareto front size: {len(result.F)}")
+print(f"Objective space (first 5 solutions):")
+print(-result.F[:5])  # negate back to maximization
+
+
+print(f"\nPareto front size: {len(result.F)}")
+print(f"Objective space (first 5 solutions):")
+print(-result.F[:5])  # negate back to maximization
+
+# ── extract best balanced solution ────────────────────────────────────────
+# pick solution closest to utopia point (max all objectives)
+utopia = result.F.min(axis=0)
+dists  = np.linalg.norm(result.F - utopia, axis=1)
+best_idx = np.argmin(dists)
+best_weights = result.X[best_idx]
+best_weights = best_weights / best_weights.sum() * n_items
+
+query_df["optimized_weight"]      = best_weights
+query_df["final_score"]           = query_df["relevance_norm"] * best_weights
+query_df["baseline_rank"]         = query_df["relevance_norm"].rank(ascending=False).astype(int)
+query_df["optimized_rank"]        = query_df["final_score"].rank(ascending=False).astype(int)
+query_df["rank_change"]           = query_df["baseline_rank"] - query_df["optimized_rank"]
+
+# ── results ────────────────────────────────────────────────────────────────
+print("\n── Optimization Results ──")
+print(f"Best solution objectives:")
+print(f"  Relevance    : {-result.F[best_idx,0]:.4f}")
+print(f"  Price Fair   : {-result.F[best_idx,1]:.4f}")
+print(f"  Review Trust : {-result.F[best_idx,2]:.4f}")
+
+print(f"\nTop 10 re-ranked items:")
+top10 = query_df.sort_values("final_score", ascending=False).head(10)
+print(top10[[
+    "product_id","baseline_rank","optimized_rank",
+    "rank_change","relevance_norm","price_fairness_n","review_trust_n"
+]].to_string())
+
+# ── save ───────────────────────────────────────────────────────────────────
+query_df.to_parquet(PROCESSED / "optimized_results.parquet", index=False)
+print(f"\nSaved: data/processed/optimized_results.parquet")
