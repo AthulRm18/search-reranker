@@ -1,0 +1,9 @@
+venv/
+data/raw/
+data/processed/
+__pycache__/
+*.pyc
+*.pyo
+.env
+*.zip
+get-pip.py
