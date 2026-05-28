@@ -41,7 +41,8 @@ def review_features(df):
     df["is_extreme_rating"]  = df["score"].apply(lambda x: int(x in [1, 5]))
 
     # helpfulness signals
-    df[["helpful_num", "helpful_denom"]] = df["HelpfulnessNumerator"].fillna(0), df["HelpfulnessDenominator"].fillna(0)
+    df["helpful_num"]   = df["HelpfulnessNumerator"].fillna(0)
+    df["helpful_denom"] = df["HelpfulnessDenominator"].fillna(0)
     df["helpful_ratio"]      = df["helpful_num"] / (df["helpful_denom"] + 1)
 
     # per-user behavioral signals
