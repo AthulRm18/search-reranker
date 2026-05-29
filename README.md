@@ -1,12 +1,4 @@
----
-title: Search Re-Ranker
-emoji: 🔍
-colorFrom: blue
-colorTo: gray
-sdk: docker
-app_port: 8000
-pinned: false
----
+
 
 # Search Re-Ranker
 
