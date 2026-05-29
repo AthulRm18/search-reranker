@@ -122,8 +122,9 @@
   // ══════════════════════════════════════════════════════════════════════════
   //  METRICS OVERLAY
   // ══════════════════════════════════════════════════════════════════════════
-  function showMetrics(metrics, sponsoredBefore, sponsoredAfterTop5) {
+  function showMetrics(metrics) {
     removeMetrics();
+    const m = metrics; // API response
     const overlay = document.createElement("div");
     overlay.id = "srr-metrics";
     overlay.innerHTML = `
@@ -137,20 +138,20 @@
         </div>
         <div class="srr-metrics-grid">
           <div class="srr-metric">
-            <span class="srr-metric-label">Baseline NDCG</span>
-            <span class="srr-metric-value">${metrics.baseline_ndcg.toFixed(4)}</span>
+            <span class="srr-metric-label">Products Analyzed</span>
+            <span class="srr-metric-value">${m.total_products || m.results.length}</span>
           </div>
           <div class="srr-metric srr-metric-highlight">
-            <span class="srr-metric-label">Optimized NDCG</span>
-            <span class="srr-metric-value">${metrics.optimized_ndcg.toFixed(4)}</span>
+            <span class="srr-metric-label">Sponsored Demoted</span>
+            <span class="srr-metric-value">${m.sponsored_demoted ?? m.sponsored_found ?? '—'}</span>
           </div>
           <div class="srr-metric">
-            <span class="srr-metric-label">Sponsored (before)</span>
-            <span class="srr-metric-value">${sponsoredBefore}</span>
+            <span class="srr-metric-label">Low Trust Demoted</span>
+            <span class="srr-metric-value">${m.low_trust_demoted ?? '—'}</span>
           </div>
-          <div class="srr-metric">
-            <span class="srr-metric-label">Sponsored (top 5 after)</span>
-            <span class="srr-metric-value">${sponsoredAfterTop5}</span>
+          <div class="srr-metric srr-metric-highlight">
+            <span class="srr-metric-label">Avg Trust (Top 5)</span>
+            <span class="srr-metric-value">${m.avg_trust_top5 ? (m.avg_trust_top5 * 100).toFixed(0) + '%' : '—'}</span>
           </div>
         </div>
         <button id="srr-restore-btn">Restore Original</button>
@@ -337,6 +338,20 @@
         sponsored = true;
       }
 
+      // ── Rating + Review Count (from search card itself) ──
+      let cardRating = 0;
+      let cardReviewCount = 0;
+      const ratingIcon = card.querySelector('.a-icon-alt, [data-cy="reviews-block"] .a-icon-alt');
+      if (ratingIcon) {
+        const rm = ratingIcon.textContent.match(/([\d.]+)\s*out\s*of/i);
+        if (rm) cardRating = parseFloat(rm[1]);
+      }
+      const reviewLink = card.querySelector('.a-size-base.s-underline-text, [data-cy="reviews-block"] .a-size-base, a[href*="customerReviews"]');
+      if (reviewLink) {
+        const cm = reviewLink.textContent.replace(/[,.\s]/g, '').match(/(\d+)/);
+        if (cm) cardReviewCount = parseInt(cm[1]);
+      }
+
       // ── URL ──
       const linkEl = card.querySelector('h2 a, a[href*="/dp/"]');
       const url = linkEl ? linkEl.href : `${ORIGIN}/dp/${asin}`;
@@ -346,6 +361,9 @@
         original_rank: index + 1,
         element: card,
         description: "", bullets: "", color: "",
+        // Live review data — initial from card, enriched by fetchSingleDetail
+        rating: cardRating, review_count: cardReviewCount, rating_distribution: [],
+        review_samples: [], verified_count: 0,
       });
     });
 
@@ -374,7 +392,7 @@
       const html = await resp.text();
       const doc = new DOMParser().parseFromString(html, "text/html");
 
-      // Description
+      // ── Description ──
       for (const sel of ["#productDescription p", "#productDescription", "#productDescription_feature_div p", "#aplus_feature_div"]) {
         const el = doc.querySelector(sel);
         if (el && el.textContent.trim().length > 20) {
@@ -383,7 +401,7 @@
         }
       }
 
-      // Bullets
+      // ── Bullets ──
       for (const sel of ["#feature-bullets ul li span.a-list-item", "#feature-bullets ul li", ".a-unordered-list .a-list-item"]) {
         const els = doc.querySelectorAll(sel);
         if (els.length) {
@@ -392,7 +410,7 @@
         }
       }
 
-      // Color
+      // ── Color ──
       for (const row of doc.querySelectorAll("#productOverview_feature_div tr, #detailBullets_feature_div li, #poExpander tr, .prodDetTable tr")) {
         const text = row.textContent.toLowerCase();
         if (text.includes("color") || text.includes("colour")) {
@@ -400,6 +418,70 @@
           if (cells.length >= 2) { product.color = cells[cells.length - 1].textContent.trim().slice(0, 50); break; }
         }
       }
+
+      // ══════════════════════════════════════════════════════════════════════
+      //  LIVE REVIEW DATA — scraped from the actual product page
+      // ══════════════════════════════════════════════════════════════════════
+
+      // ── Overall Rating ──
+      const ratingEl = doc.querySelector('#acrPopover span.a-icon-alt, .a-icon-alt, #averageCustomerReviews span.a-icon-alt');
+      if (ratingEl) {
+        const ratingMatch = ratingEl.textContent.match(/([\d.]+)\s*out\s*of\s*5/i);
+        if (ratingMatch) product.rating = parseFloat(ratingMatch[1]);
+      }
+
+      // ── Review Count ──
+      const countEl = doc.querySelector('#acrCustomerReviewText, #acrCustomerReviewLink span, [data-hook="total-review-count"]');
+      if (countEl) {
+        const countMatch = countEl.textContent.replace(/,/g, '').match(/([\d]+)/);
+        if (countMatch) product.review_count = parseInt(countMatch[1]);
+      }
+
+      // ── Rating Distribution (star histogram) ──
+      // Amazon shows a histogram table with percentages for each star level
+      const histRows = doc.querySelectorAll('#histogramTable tr, table.a-histogram-row tr, .cr-widget-Histogram tr');
+      if (histRows.length >= 5) {
+        const dist = [0, 0, 0, 0, 0]; // 1-star to 5-star
+        histRows.forEach((row, i) => {
+          if (i >= 5) return;
+          const pctEl = row.querySelector('.a-text-right a, td:last-child .a-size-base, .a-nowrap');
+          if (pctEl) {
+            const pctMatch = pctEl.textContent.match(/([\d]+)%/);
+            if (pctMatch) dist[4 - i] = parseInt(pctMatch[1]); // Amazon shows 5-star first
+          }
+        });
+        if (dist.some(d => d > 0)) product.rating_distribution = dist;
+      }
+
+      // ── Sample Reviews ──
+      const reviewEls = doc.querySelectorAll('[data-hook="review-body"] span, .review-text-content span, .cr-original-review-content');
+      const samples = [];
+      const verifiedCount = { count: 0 };
+      
+      // Also check for verified purchase badges near each review
+      const reviewCards = doc.querySelectorAll('[data-hook="review"], .review, .a-section.review');
+      reviewCards.forEach((card, i) => {
+        if (i >= 8) return; // max 8 reviews
+        
+        // Review text
+        const textEl = card.querySelector('[data-hook="review-body"] span, .review-text-content span');
+        if (textEl) {
+          const text = textEl.textContent.trim().slice(0, 300);
+          if (text.length > 10) samples.push(text);
+        }
+        
+        // Verified purchase check
+        const verifiedEl = card.querySelector('.avp-badge, [data-hook="avp-badge"], .a-color-state');
+        if (verifiedEl && verifiedEl.textContent.toLowerCase().includes('verified')) {
+          verifiedCount.count++;
+        }
+      });
+      
+      if (samples.length > 0) product.review_samples = samples;
+      product.verified_count = verifiedCount.count;
+
+      LOG(`Details for ${product.asin}: rating=${product.rating}, reviews=${product.review_count}, dist=${JSON.stringify(product.rating_distribution)}, samples=${samples.length}, verified=${verifiedCount.count}`);
+
     } catch (err) {
       LOG(`Detail fetch failed for ${product.asin}: ${err.message}`);
     }
@@ -422,6 +504,12 @@
         product_color: p.color,
         original_rank: p.original_rank,
         sponsored: p.sponsored,
+        // Live review data for real-time trust scoring
+        rating: p.rating || 0,
+        review_count: p.review_count || 0,
+        rating_distribution: p.rating_distribution || [],
+        review_samples: p.review_samples || [],
+        verified_count: p.verified_count || 0,
       })),
     };
 
@@ -494,6 +582,19 @@
     const cls = ch > 0 ? "srr-badge-up" : ch < 0 ? "srr-badge-down" : "srr-badge-neutral";
     const txt = ch > 0 ? `↑ ${ch}` : ch < 0 ? `↓ ${Math.abs(ch)}` : "→ 0";
 
+    // Build trust detail line from real signals
+    const ts = result.trust_signals || {};
+    let trustDetail = "";
+    if (ts.source === "live") {
+      const parts = [];
+      if (ts.five_star_ratio != null) parts.push(`★5: ${(ts.five_star_ratio * 100).toFixed(0)}%`);
+      if (ts.verified_ratio != null) parts.push(`Verified: ${(ts.verified_ratio * 100).toFixed(0)}%`);
+      if (ts.avg_review_words != null) parts.push(`Avg ${ts.avg_review_words.toFixed(0)}w`);
+      trustDetail = parts.join(" · ") || "Live data";
+    } else {
+      trustDetail = "No review data";
+    }
+
     const badge = document.createElement("div");
     badge.className = "srr-badge";
     badge.innerHTML = `
@@ -503,6 +604,7 @@
         <div class="srr-score-row"><span>Rel</span><div class="srr-score-bar"><div class="srr-score-fill srr-score-rel" style="width:${(result.relevance_score * 100).toFixed(0)}%"></div></div><span>${(result.relevance_score * 100).toFixed(0)}%</span></div>
         <div class="srr-score-row"><span>Trust</span><div class="srr-score-bar"><div class="srr-score-fill srr-score-trust" style="width:${(result.trust_score * 100).toFixed(0)}%"></div></div><span>${(result.trust_score * 100).toFixed(0)}%</span></div>
       </div>
+      <div class="srr-badge-detail">${trustDetail}</div>
     `;
     element.style.position = "relative";
     element.appendChild(badge);
@@ -594,7 +696,7 @@
       lastMetrics = apiResult;
       reorderDOM(products, apiResult);
       removePipeline();
-      showMetrics(apiResult, products.filter((p) => p.sponsored).length, apiResult.results.slice(0, 5).filter((r) => r.sponsored).length);
+      showMetrics(apiResult);
 
     } catch (err) {
       removePipeline();
