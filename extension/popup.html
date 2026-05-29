@@ -2,112 +2,195 @@
 <html>
 <head>
   <meta charset="UTF-8" />
+  <title>Search Optimizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
       width: 320px;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #fff;
-      color: #111827;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #fcfcfd;
+      color: #0f172a;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
     }
 
+    /* Premium Header */
     .header {
-      padding: 16px;
-      background: linear-gradient(135deg, #4f46e5, #7c3aed);
-      color: #fff;
+      padding: 20px 16px 16px;
+      background: #ffffff;
+      border-bottom: 1px solid #f1f5f9;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
     }
 
     .header h1 {
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 800;
       display: flex;
       align-items: center;
       gap: 8px;
+      color: #000000;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .header h1 svg {
+      color: #000000;
+      stroke-width: 2.5;
     }
 
     .header p {
       font-size: 10px;
-      opacity: 0.8;
-      margin-top: 4px;
+      color: #64748b;
       font-weight: 500;
     }
 
+    /* Status Bar */
     .status {
-      padding: 12px 16px;
-      border-bottom: 1px solid #f3f4f6;
+      padding: 10px 16px;
+      background: #f8fafc;
+      border-bottom: 1px solid #f1f5f9;
       display: flex;
       align-items: center;
       gap: 8px;
-      font-size: 12px;
-      font-weight: 600;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
     }
 
     .status-dot {
-      width: 8px;
-      height: 8px;
+      width: 6px;
+      height: 6px;
       border-radius: 50%;
       flex-shrink: 0;
     }
 
-    .status-dot.online { background: #10b981; }
-    .status-dot.offline { background: #ef4444; }
-    .status-dot.checking { background: #f59e0b; animation: pulse 1s infinite; }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
+    .status-dot.online { 
+      background: #10b981; 
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+    }
+    .status-dot.offline { 
+      background: #ef4444; 
+      box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+    }
+    .status-dot.checking { 
+      background: #f59e0b; 
+      animation: pulse 1s infinite; 
+      box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
     }
 
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(1.2); }
+    }
+
+    /* Sections */
     .section {
-      padding: 12px 16px;
-      border-bottom: 1px solid #f3f4f6;
+      padding: 16px;
+      border-bottom: 1px solid #f1f5f9;
     }
 
     .section-title {
-      font-size: 10px;
-      font-weight: 700;
-      color: #9ca3af;
+      font-size: 9px;
+      font-weight: 800;
+      color: #94a3b8;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin-bottom: 8px;
+      letter-spacing: 0.08em;
+      margin-bottom: 10px;
+    }
+
+    .info-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
 
     .info-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 12px;
-      padding: 4px 0;
+      font-size: 11px;
+      background: #ffffff;
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 1px solid #f1f5f9;
     }
 
-    .info-label { color: #6b7280; font-weight: 500; }
-    .info-value { color: #111827; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .info-label { color: #64748b; font-weight: 600; }
+    .info-value { color: #0f172a; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+    /* Guides styling */
+    .guide-step {
+      font-size: 11px;
+      color: #475569;
+      line-height: 1.5;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+    }
+    
+    .guide-step span {
+      background: #f1f5f9;
+      color: #0f172a;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 800;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .code-chip {
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 1px 4px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-family: monospace;
+      font-weight: bold;
+    }
 
     .tech-tags {
       display: flex;
       flex-wrap: wrap;
-      gap: 4px;
+      gap: 6px;
       margin-top: 4px;
     }
 
     .tech-tag {
-      font-size: 10px;
-      font-weight: 600;
-      padding: 3px 8px;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 4px 8px;
       border-radius: 6px;
-      background: #f3f4f6;
-      color: #6b7280;
+      background: #f1f5f9;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
     }
 
     .footer {
       padding: 12px 16px;
       text-align: center;
+      background: #f8fafc;
     }
 
     .footer p {
-      font-size: 10px;
-      color: #9ca3af;
+      font-size: 9px;
+      color: #94a3b8;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
     }
   </style>
 </head>
@@ -115,58 +198,71 @@
 
   <div class="header">
     <h1>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      <!-- Custom Up/Down Arrows SVG -->
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m3 16 4 4 4-4"/>
+        <path d="M7 20V4"/>
+        <path d="m21 8-4-4-4 4"/>
+        <path d="M17 4v16"/>
       </svg>
-      Search Re-Ranker
+      Search Optimizer
     </h1>
-    <p>ML-Powered Fair Search Re-Ranking</p>
+    <p>Premium Real-Time Results Optimizer</p>
   </div>
 
   <div class="status" id="status-bar">
     <div class="status-dot checking" id="status-dot"></div>
-    <span id="status-text">Checking backend...</span>
+    <span id="status-text">Checking Service...</span>
   </div>
 
   <div class="section">
-    <div class="section-title">Backend Info</div>
-    <div class="info-row">
-      <span class="info-label">Endpoint</span>
-      <span class="info-value">localhost:8000</span>
-    </div>
-    <div class="info-row">
-      <span class="info-label">Model</span>
-      <span class="info-value" id="model-name">—</span>
-    </div>
-    <div class="info-row">
-      <span class="info-label">Features</span>
-      <span class="info-value" id="feature-count">—</span>
+    <div class="section-title">System Status</div>
+    <div class="info-grid">
+      <div class="info-row">
+        <span class="info-label">Service Link</span>
+        <span class="info-value">localhost:8000</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Rank Model</span>
+        <span class="info-value" id="model-name">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Feature Count</span>
+        <span class="info-value" id="feature-count">—</span>
+      </div>
     </div>
   </div>
 
   <div class="section">
     <div class="section-title">How to Use</div>
-    <div style="font-size:12px; color:#6b7280; line-height:1.6;">
-      1. Start FastAPI: <code style="background:#f3f4f6;padding:1px 4px;border-radius:3px;font-size:11px;">uvicorn api.main:app</code><br>
-      2. Go to Amazon &amp; search anything<br>
-      3. Click the <strong style="color:#4f46e5;">Re-Rank</strong> button (bottom-right)
+    <div style="margin-top: 2px;">
+      <div class="guide-step">
+        <span>1</span>
+        <div>Run API: <code class="code-chip">uvicorn api.main:app</code></div>
+      </div>
+      <div class="guide-step">
+        <span>2</span>
+        <div>Search for products on Amazon</div>
+      </div>
+      <div class="guide-step">
+        <span>3</span>
+        <div>Click the <strong style="color:#10b981;">Optimize</strong> button on the bottom right</div>
+      </div>
     </div>
   </div>
 
   <div class="section">
-    <div class="section-title">Tech Stack</div>
+    <div class="section-title">Engine Features</div>
     <div class="tech-tags">
       <span class="tech-tag">LambdaMART</span>
-      <span class="tech-tag">Trust Signals</span>
-      <span class="tech-tag">Risk Scoring</span>
-      <span class="tech-tag">ESCI Dataset</span>
+      <span class="tech-tag">Verified Signals</span>
+      <span class="tech-tag">Fairness Blend</span>
       <span class="tech-tag">LightGBM</span>
-      <span class="tech-tag">FastAPI</span>
     </div>
   </div>
 
   <div class="footer">
-    <p>Navigate to Amazon search results to activate</p>
+    <p>Awaiting Amazon Search Navigation</p>
   </div>
 
   <script src="popup.js"></script>

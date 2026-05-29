@@ -1,1 +1,144 @@
-@import "tailwindcss";
+/* ═══════════════════════════════════════════════════════════════════════════
+   ReRank — Design System & Global Tokens
+   Precision Instrument / Signal Intelligence Console
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Reset ─────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Design Tokens ─────────────────────────────────────────────────────── */
+:root {
+  /* Colors — Background */
+  --bg:             #fcfcfc;
+  --surface:        #ffffff;
+  --elevated:       #f4f4f5;
+
+  /* Colors — Border */
+  --border:         #e4e4e7;
+  --border-hi:      #a1a1aa;
+
+  /* Colors — Text */
+  --text:           #09090b;
+  --text-muted:     #52525b;
+  --text-dim:       #71717a;
+
+  /* Colors — Accent (Charcoal Black) */
+  --accent:         #09090b;
+  --accent-dim:     #f4f4f5;
+  --accent-border:  #e4e4e7;
+  --accent-glow:    rgba(9, 9, 11, 0.05);
+
+  /* Colors — Signal (Royal Blue) */
+  --signal:         #2563eb;
+  --signal-dim:     #eff6ff;
+  --signal-border:  #dbeafe;
+
+  /* Colors — Warning (Amber) */
+  --warn:           #b45309;
+  --warn-dim:       #fffbeb;
+  --warn-border:    #fef3c7;
+
+  /* Colors — Error (Crimson) */
+  --error:          #dc2626;
+  --error-dim:      #fef2f2;
+  --error-border:   #fee2e2;
+
+  /* Typography */
+  --font-display:   'DM Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body:      'DM Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono:      'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
+
+  /* Spacing */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+
+  /* Radii */
+  --r-sm: 3px;
+  --r-md: 5px;
+  --r-lg: 6px;
+  --r-xl: 8px;
+  --r-full: 9999px;
+
+  /* Shadows */
+  --shadow-surface:  0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-float:    0 4px 12px rgba(0, 0, 0, 0.05), 0 0 1px rgba(0, 0, 0, 0.1);
+  --shadow-modal:    0 10px 24px rgba(0, 0, 0, 0.08), 0 0 1px rgba(0, 0, 0, 0.1);
+  --shadow-glow:     0 0 12px var(--accent-glow);
+
+  /* Motion */
+  --ease-out:  cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast:  0.15s;
+  --dur-mid:   0.3s;
+  --dur-slow:  0.5s;
+}
+
+/* ── Base ──────────────────────────────────────────────────────────────── */
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+}
+
+::selection {
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--text);
+}
+
+/* ── Focus Management ──────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+  transition: background var(--dur-fast);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-hi);
+}
+
+/* ── Utility Keyframes ─────────────────────────────────────────────────── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}

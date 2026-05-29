@@ -49,11 +49,14 @@
     const fab = document.createElement("div");
     fab.id = "srr-fab";
     fab.innerHTML = `
-      <button id="srr-rerank-btn" title="Re-Rank with ML">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      <button id="srr-rerank-btn" title="Optimize Search Results">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 0 0.8px rgba(255,255,255,0.9));">
+          <path d="m3 16 4 4 4-4"/>
+          <path d="M7 20V4"/>
+          <path d="m21 8-4-4-4 4"/>
+          <path d="M17 4v16"/>
         </svg>
-        <span>Re-Rank</span>
+        <span>Optimize</span>
       </button>
       <div id="srr-mode-bar">
         <button class="srr-mode-btn srr-mode-active" data-mode="balanced">Balanced</button>
@@ -90,7 +93,7 @@
     overlay.id = "srr-pipeline";
     overlay.innerHTML = `
       <div class="srr-pipeline-inner">
-        <div class="srr-pipeline-title">ML Re-Ranking Pipeline</div>
+        <div class="srr-pipeline-title">Optimizing Search Results...</div>
         <div class="srr-pipeline-steps">
           <div class="srr-step" id="srr-step-0"><span class="srr-step-dot"></span>Scraping</div>
           <div class="srr-step" id="srr-step-1"><span class="srr-step-dot"></span>Details</div>
@@ -130,10 +133,13 @@
     overlay.innerHTML = `
       <div class="srr-metrics-inner">
         <div class="srr-metrics-title">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 0 0.8px rgba(255,255,255,0.9));">
+            <path d="m3 16 4 4 4-4"/>
+            <path d="M7 20V4"/>
+            <path d="m21 8-4-4-4 4"/>
+            <path d="M17 4v16"/>
           </svg>
-          Re-Ranked · ${currentMode}
+          Optimized · ${currentMode}
           <button id="srr-close-metrics" title="Close">✕</button>
         </div>
         <div class="srr-metrics-grid">
@@ -580,31 +586,19 @@
 
     const ch = result.rank_change;
     const cls = ch > 0 ? "srr-badge-up" : ch < 0 ? "srr-badge-down" : "srr-badge-neutral";
-    const txt = ch > 0 ? `↑ ${ch}` : ch < 0 ? `↓ ${Math.abs(ch)}` : "→ 0";
-
-    // Build trust detail line from real signals
-    const ts = result.trust_signals || {};
-    let trustDetail = "";
-    if (ts.source === "live") {
-      const parts = [];
-      if (ts.five_star_ratio != null) parts.push(`★5: ${(ts.five_star_ratio * 100).toFixed(0)}%`);
-      if (ts.verified_ratio != null) parts.push(`Verified: ${(ts.verified_ratio * 100).toFixed(0)}%`);
-      if (ts.avg_review_words != null) parts.push(`Avg ${ts.avg_review_words.toFixed(0)}w`);
-      trustDetail = parts.join(" · ") || "Live data";
-    } else {
-      trustDetail = "No review data";
-    }
+    const txt = ch > 0 ? `↑ ${ch}` : ch < 0 ? `↓ ${Math.abs(ch)}` : "=";
 
     const badge = document.createElement("div");
     badge.className = "srr-badge";
     badge.innerHTML = `
-      <div class="srr-badge-rank">#${result.new_rank}</div>
-      <div class="srr-badge-change ${cls}">${txt}</div>
-      <div class="srr-badge-scores">
-        <div class="srr-score-row"><span>Rel</span><div class="srr-score-bar"><div class="srr-score-fill srr-score-rel" style="width:${(result.relevance_score * 100).toFixed(0)}%"></div></div><span>${(result.relevance_score * 100).toFixed(0)}%</span></div>
-        <div class="srr-score-row"><span>Trust</span><div class="srr-score-bar"><div class="srr-score-fill srr-score-trust" style="width:${(result.trust_score * 100).toFixed(0)}%"></div></div><span>${(result.trust_score * 100).toFixed(0)}%</span></div>
+      <div class="srr-badge-header">
+        <div class="srr-badge-rank">#${result.new_rank}</div>
+        <div class="srr-badge-change ${cls}">${txt}</div>
       </div>
-      <div class="srr-badge-detail">${trustDetail}</div>
+      <div class="srr-badge-scores">
+        <div class="srr-score-row"><div class="srr-score-bar"><div class="srr-score-fill srr-score-rel" style="width:${(result.relevance_score * 100).toFixed(0)}%"></div></div><span>Relevance</span></div>
+        <div class="srr-score-row"><div class="srr-score-bar"><div class="srr-score-fill srr-score-trust" style="width:${(result.trust_score * 100).toFixed(0)}%"></div></div><span>Trust</span></div>
+      </div>
     `;
     element.style.position = "relative";
     element.appendChild(badge);
@@ -636,7 +630,7 @@
     const btn = document.getElementById("srr-rerank-btn");
     if (!btn) return;
     if (isReranked) { btn.classList.add("srr-reranked"); btn.querySelector("span").textContent = "Restore"; }
-    else { btn.classList.remove("srr-reranked"); btn.querySelector("span").textContent = "Re-Rank"; }
+    else { btn.classList.remove("srr-reranked"); btn.querySelector("span").textContent = "Optimize"; }
   }
 
   function getSearchQuery() {
