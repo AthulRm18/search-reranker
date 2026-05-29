@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Search Re-Ranker",
   "version": "1.1.0",
-  "description": "ML-powered search re-ranking — LambdaMART + Isolation Forest + NSGA-II on live Amazon results",
+  "description": "ML-powered search re-ranking with LambdaMART relevance and live review trust-risk signals",
   "permissions": ["activeTab"],
   "host_permissions": [
     "https://www.amazon.com/*",

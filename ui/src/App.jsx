@@ -6,8 +6,8 @@ import { Search, Shield, Zap, TrendingUp, ArrowUp, ArrowDown, Minus, Loader2 } f
 const STEPS = [
   { label: "Feature Extraction", desc: "11 lexical features" },
   { label: "LambdaMART",         desc: "Relevance scoring" },
-  { label: "Trust Scoring",      desc: "Isolation Forest" },
-  { label: "NSGA-II Optimize",   desc: "Multi-objective" },
+  { label: "Trust-Risk Scoring", desc: "Review signals" },
+  { label: "Objective Blend",    desc: "Mode weights" },
   { label: "Re-Ranking",         desc: "Final ordering" },
 ]
 
@@ -19,7 +19,6 @@ function PipelineBar({ step }) {
         {STEPS.map((s, i) => {
           const done    = step > i
           const active  = step === i
-          const pending = step < i
           return (
             <div key={s.label} className="flex items-center flex-1">
               <div className={`flex-1 rounded-lg px-2 py-1.5 text-center transition-all duration-300 ${
@@ -177,11 +176,11 @@ export default function App() {
   const [totalMatches,setTotalMatches]= useState(0)
   const [pipeStep,    setPipeStep]    = useState(-1)
 
-  // step through pipeline with delays
-  const runPipeline = useCallback((i, cb) => {
-    if (i >= STEPS.length) { cb(); return }
-    setPipeStep(i)
-    setTimeout(() => runPipeline(i + 1, cb), 420)
+  const runPipeline = useCallback((cb) => {
+    STEPS.forEach((_, i) => {
+      setTimeout(() => setPipeStep(i), i * 420)
+    })
+    setTimeout(cb, STEPS.length * 420)
   }, [])
 
   const handleSearch = async () => {
@@ -213,7 +212,7 @@ export default function App() {
       const res = await axios.post("/api/rerank", { query, products: original, mode })
 
       // animate pipeline, THEN show results
-      runPipeline(0, () => {
+      runPipeline(() => {
         setTimeout(() => {
           setReranked(res.data.results)
           setMetrics(res.data)
@@ -240,7 +239,7 @@ export default function App() {
         <div className="max-w-6xl mx-auto flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Search Re-Ranker</h1>
-            <p className="text-xs text-gray-400 mt-0.5">LambdaMART · NSGA-II · ESCI Dataset · NDCG@10 0.9114</p>
+            <p className="text-xs text-gray-400 mt-0.5">LambdaMART · Review Trust Signals · ESCI Dataset · NDCG@10 0.9114</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <div className="relative">
@@ -315,7 +314,7 @@ export default function App() {
             <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2 bg-yellow-50">
               <Zap size={15} className="text-yellow-500" />
               <span className="font-semibold text-sm text-gray-700">Amazon-Style Ranking</span>
-              <span className="ml-auto text-xs text-gray-400 italic">revenue optimized</span>
+              <span className="ml-auto text-xs text-gray-400 italic">sponsored-heavy baseline</span>
             </div>
             <div className="p-3">
               {original.length === 0 ? (
@@ -343,7 +342,7 @@ export default function App() {
             <div className="px-4 py-3 border-b border-blue-100 flex items-center gap-2 bg-blue-50">
               <Shield size={15} className="text-blue-500" />
               <span className="font-semibold text-sm text-gray-700">Re-Ranked Results</span>
-              <span className="ml-auto text-xs text-gray-400 italic">user satisfaction</span>
+              <span className="ml-auto text-xs text-gray-400 italic">relevance + trust signals</span>
             </div>
             <div className="p-3">
               {reranked.length === 0 ? (

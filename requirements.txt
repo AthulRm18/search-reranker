@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+pydantic
+pandas
+numpy
+lightgbm
+scikit-learn
+joblib
+pyarrow
+tqdm
+pymoo
+transformers

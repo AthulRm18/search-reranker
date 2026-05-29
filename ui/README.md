@@ -1,16 +1,22 @@
-# React + Vite
+# Search Re-Ranker UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite dashboard for comparing the baseline Amazon-style product order with the ML re-ranked order returned by the FastAPI backend.
 
-Currently, two official plugins are available:
+## Run
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```powershell
+npm install
+npm run dev
+```
 
-## React Compiler
+The dev server proxies `/api/*` to `http://localhost:8000`, so start the backend first:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```powershell
+uvicorn api.main:app --reload --port 8000
+```
 
-## Expanding the ESLint configuration
+## Main Files
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- `src/App.jsx` - dashboard logic and ranking comparison UI
+- `src/App.css` / `src/index.css` - styling
+- `vite.config.js` - React, Tailwind, and backend proxy config

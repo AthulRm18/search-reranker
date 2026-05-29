@@ -18,7 +18,7 @@ reviews = pd.read_csv(RAW / "Reviews.csv", nrows=500000)
 print(f"Loaded: {reviews.shape}")
 print(f"Columns: {list(reviews.columns)}")
 
-# ── feature engineering for fake review detection ─────────────────────────
+# ── feature engineering for review trust-risk scoring ─────────────────────
 print("\nEngineering review features...")
 
 def review_features(df):
@@ -75,10 +75,10 @@ scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
 # ── isolation forest ───────────────────────────────────────────────────────
-print("\nTraining Isolation Forest fake review detector...")
+print("\nTraining Isolation Forest review-risk scorer...")
 iso = IsolationForest(
     n_estimators=200,
-    contamination=0.05,   # assume 5% fake reviews
+    contamination=0.05,   # unsupervised risk assumption for the prototype
     random_state=42,
     n_jobs=-1,
     verbose=1
@@ -90,8 +90,8 @@ scores = iso.decision_function(X_scaled)
 reviews["fake_score"]      = scores
 reviews["is_fake"]         = (iso.predict(X_scaled) == -1).astype(int)
 
-print(f"\nDetected fake reviews: {reviews['is_fake'].sum():,} / {len(reviews):,}")
-print(f"Fake rate: {reviews['is_fake'].mean()*100:.1f}%")
+print(f"\nFlagged high-risk reviews: {reviews['is_fake'].sum():,} / {len(reviews):,}")
+print(f"High-risk rate: {reviews['is_fake'].mean()*100:.1f}%")
 
 # ── per-product trust score ────────────────────────────────────────────────
 print("\nComputing per-product trust scores...")
