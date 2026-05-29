@@ -1,6 +1,8 @@
 // ── Search Re-Ranker — Content Script ─────────────────────────────────────
 // Runs on Amazon search result pages. Scrapes products, calls re-ranker API
 // via background script, and reorders the DOM with animations.
+//
+// Tested on: amazon.com, amazon.in, amazon.co.uk
 
 (function () {
   "use strict";
@@ -8,6 +10,9 @@
   // Prevent double injection
   if (window.__searchRerankerInjected) return;
   window.__searchRerankerInjected = true;
+
+  const LOG = (...args) => console.log("[Search Re-Ranker]", ...args);
+  const ORIGIN = window.location.origin; // e.g. https://www.amazon.in
 
   // ── State ───────────────────────────────────────────────────────────────
   let isReranked = false;
@@ -51,7 +56,6 @@
         fab.querySelectorAll(".srr-mode-btn").forEach((b) => b.classList.remove("srr-mode-active"));
         btn.classList.add("srr-mode-active");
         currentMode = btn.dataset.mode;
-        // Re-run if already reranked
         if (isReranked) {
           restoreOriginalOrder();
           setTimeout(() => runRerank(), 100);
@@ -144,105 +148,243 @@
     if (el) el.remove();
   }
 
-  // ── Scrape Amazon Search Results ────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  //  SCRAPER — multi-selector with fallbacks for .com / .in / .co.uk
+  // ══════════════════════════════════════════════════════════════════════════
+
   function scrapeProducts() {
-    const cards = document.querySelectorAll('[data-component-type="s-search-result"]');
+    // --- Step 1: Find all product cards ---
+    // Try selectors in order of specificity. Amazon uses different structures
+    // across regions and layout versions.
+    const CARD_SELECTORS = [
+      '[data-component-type="s-search-result"]',              // .com standard
+      '[data-cel-widget^="search_result_"]',                  // .in common
+      '.s-result-item[data-asin]',                            // generic fallback
+      '[data-asin][data-index]',                              // index-based
+      '.sg-col-4-of-24 [data-asin], .sg-col-4-of-20 [data-asin]', // grid layout
+    ];
+
+    let cards = [];
+    for (const sel of CARD_SELECTORS) {
+      const found = document.querySelectorAll(sel);
+      if (found.length > 0) {
+        cards = Array.from(found);
+        LOG(`Found ${cards.length} products using selector: ${sel}`);
+        break;
+      }
+    }
+
+    // Last resort: any element with data-asin inside the main search area
+    if (cards.length === 0) {
+      const mainSlot = document.querySelector('.s-main-slot, #search, [data-component-type="s-search-results"]');
+      if (mainSlot) {
+        cards = Array.from(mainSlot.querySelectorAll('[data-asin]'));
+        LOG(`Fallback: found ${cards.length} [data-asin] elements inside main search area`);
+      }
+    }
+
+    if (cards.length === 0) {
+      // Ultra fallback: just grab all data-asin on the page, filter out tiny ones
+      cards = Array.from(document.querySelectorAll('[data-asin]')).filter(
+        (el) => el.offsetHeight > 100 && el.getAttribute("data-asin").length > 3
+      );
+      LOG(`Ultra fallback: found ${cards.length} visible [data-asin] elements`);
+    }
+
+    // --- Step 2: Extract data from each card ---
     const products = [];
+    const seenAsins = new Set();
 
     cards.forEach((card, index) => {
       const asin = card.getAttribute("data-asin");
-      if (!asin) return;
+      if (!asin || asin.length < 3 || seenAsins.has(asin)) return;
+      seenAsins.add(asin);
 
-      // Title
-      const titleEl = card.querySelector("h2 a span, h2 span.a-text-normal");
-      const title = titleEl ? titleEl.textContent.trim() : "";
-      if (!title) return;
+      // ── Title ──
+      // Try many selectors — Amazon varies a LOT
+      const TITLE_SELECTORS = [
+        'h2 a span.a-text-normal',
+        'h2 a span',
+        'h2 span.a-text-normal',
+        'h2 span',
+        '[data-cy="title-recipe"] h2 span',
+        '.a-size-medium.a-text-normal',
+        '.a-size-base-plus.a-text-normal',
+        'a.a-link-normal .a-text-normal',
+        '.a-size-mini h2 a span',
+        'h2',
+      ];
 
-      // Brand
+      let title = "";
+      for (const sel of TITLE_SELECTORS) {
+        const el = card.querySelector(sel);
+        if (el && el.textContent.trim().length > 5) {
+          title = el.textContent.trim();
+          break;
+        }
+      }
+      if (!title) {
+        LOG(`Skipping ASIN ${asin}: no title found`);
+        return;
+      }
+
+      // ── Brand ──
       let brand = "";
-      const brandEl = card.querySelector(".a-row .a-size-base-plus, .s-line-clamp-1 .a-size-base");
-      if (brandEl) brand = brandEl.textContent.trim();
+      const BRAND_SELECTORS = [
+        '.a-row .a-size-base-plus',
+        '.s-line-clamp-1 .a-size-base',
+        'span.a-size-base:first-of-type',
+        '.a-row .a-size-base',
+        '[data-cy="reviews-block"] ~ div .a-size-base',
+      ];
+      for (const sel of BRAND_SELECTORS) {
+        const el = card.querySelector(sel);
+        if (el) {
+          const text = el.textContent.trim();
+          // Filter out things that are clearly not brand names
+          if (text.length > 0 && text.length < 60 && !text.includes("₹") && !text.includes("$") && !text.includes("star")) {
+            brand = text;
+            break;
+          }
+        }
+      }
 
-      // Sponsored
-      const sponsoredEl = card.querySelector(
-        '.puis-label-popover-default, .s-label-popover-default, [data-component-type="sp-sponsored-result"]'
-      );
-      const cardText = card.textContent || "";
-      const sponsored = !!(sponsoredEl || /\bSponsored\b/.test(cardText.slice(0, 200)));
+      // ── Sponsored Detection ──
+      // Check for sponsored markers — handle English, Hindi, and other languages
+      const SPONSORED_SELECTORS = [
+        '.puis-label-popover-default',
+        '.s-label-popover-default',
+        '[data-component-type="sp-sponsored-result"]',
+        '.a-color-secondary:first-child',
+      ];
 
-      // Product URL
-      const linkEl = card.querySelector("h2 a");
-      const url = linkEl ? linkEl.href : `https://www.amazon.com/dp/${asin}`;
+      let sponsored = false;
+      // Selector-based check
+      for (const sel of SPONSORED_SELECTORS) {
+        const el = card.querySelector(sel);
+        if (el) {
+          const t = el.textContent.trim().toLowerCase();
+          if (t.includes("sponsor") || t === "sponsored" || t.includes("प्रायोजित")) {
+            sponsored = true;
+            break;
+          }
+        }
+      }
+      // Text-based fallback: check first 300 chars of card text
+      if (!sponsored) {
+        const topText = card.textContent.slice(0, 300).toLowerCase();
+        sponsored = /\bsponsored\b/.test(topText) || topText.includes("प्रायोजित");
+      }
+
+      // ── Product URL ──
+      const linkEl = card.querySelector("h2 a, a.a-link-normal[href*='/dp/']");
+      const url = linkEl ? linkEl.href : `${ORIGIN}/dp/${asin}`;
 
       products.push({
         asin,
-        title,
+        title: title.slice(0, 200),
         brand,
         sponsored,
         url,
         original_rank: index + 1,
         element: card,
-        // Will be filled by detail fetcher
         description: "",
         bullets: "",
         color: "",
       });
     });
 
+    LOG(`Scraped ${products.length} products (${products.filter(p => p.sponsored).length} sponsored)`);
     return products;
   }
 
-  // ── Fetch Product Detail Pages ──────────────────────────────────────────
-  // Fetches and parses directly in the content script (same-origin, has DOMParser)
+  // ══════════════════════════════════════════════════════════════════════════
+  //  DETAIL FETCHER — same-origin fetch + DOMParser
+  // ══════════════════════════════════════════════════════════════════════════
+
   async function fetchProductDetails(products) {
     const toFetch = products.slice(0, 15);
+    let fetched = 0;
 
-    // Batch in groups of 3 to avoid overwhelming Amazon
+    // Batch in groups of 3 to be polite
     for (let i = 0; i < toFetch.length; i += 3) {
       const batch = toFetch.slice(i, i + 3);
       await Promise.all(batch.map((p) => fetchSingleDetail(p)));
+      fetched += batch.length;
     }
+
+    LOG(`Fetched details for ${fetched} products`);
   }
 
   async function fetchSingleDetail(product) {
     try {
-      const resp = await fetch(product.url, { credentials: "same-origin" });
+      const resp = await fetch(product.url, {
+        credentials: "same-origin",
+        headers: { "Accept": "text/html" },
+      });
       if (!resp.ok) return;
       const html = await resp.text();
       const doc = new DOMParser().parseFromString(html, "text/html");
 
-      // Description
-      const descEl = doc.querySelector("#productDescription p, #productDescription, #productDescription_feature_div");
-      if (descEl) product.description = descEl.textContent.trim().slice(0, 500);
-
-      // Bullet points
-      const bulletEls = doc.querySelectorAll("#feature-bullets ul li span.a-list-item");
-      if (bulletEls.length) {
-        product.bullets = Array.from(bulletEls)
-          .map((el) => el.textContent.trim())
-          .filter((t) => t.length > 5)
-          .join(" | ")
-          .slice(0, 500);
+      // ── Description ──
+      const DESC_SELECTORS = [
+        "#productDescription p",
+        "#productDescription",
+        "#productDescription_feature_div p",
+        "#productDescription_feature_div",
+        "#aplus_feature_div",
+      ];
+      for (const sel of DESC_SELECTORS) {
+        const el = doc.querySelector(sel);
+        if (el && el.textContent.trim().length > 20) {
+          product.description = el.textContent.trim().slice(0, 500);
+          break;
+        }
       }
 
-      // Color — search product overview table rows
-      const overviewRows = doc.querySelectorAll("#productOverview_feature_div tr, #detailBullets_feature_div li");
+      // ── Bullet Points ──
+      const BULLET_SELECTORS = [
+        "#feature-bullets ul li span.a-list-item",
+        "#feature-bullets ul li",
+        ".a-unordered-list .a-list-item",
+      ];
+      for (const sel of BULLET_SELECTORS) {
+        const els = doc.querySelectorAll(sel);
+        if (els.length > 0) {
+          product.bullets = Array.from(els)
+            .map((el) => el.textContent.trim())
+            .filter((t) => t.length > 5 && t.length < 500)
+            .slice(0, 10)
+            .join(" | ")
+            .slice(0, 500);
+          if (product.bullets.length > 20) break;
+        }
+      }
+
+      // ── Color ──
+      const overviewRows = doc.querySelectorAll(
+        "#productOverview_feature_div tr, #detailBullets_feature_div li, #poExpander tr, .prodDetTable tr"
+      );
       for (const row of overviewRows) {
         const text = row.textContent.toLowerCase();
         if (text.includes("color") || text.includes("colour")) {
-          const spans = row.querySelectorAll("td span, span.a-text-bold + span");
-          if (spans.length >= 2) {
-            product.color = spans[spans.length - 1].textContent.trim();
+          // Get all text nodes / spans and pick the value (usually second column)
+          const cells = row.querySelectorAll("td span, td, span.a-text-bold + span");
+          if (cells.length >= 2) {
+            product.color = cells[cells.length - 1].textContent.trim().slice(0, 50);
             break;
           }
         }
       }
     } catch (err) {
-      console.log(`[Search Re-Ranker] Could not fetch details for ${product.asin}:`, err.message);
+      LOG(`Could not fetch details for ${product.asin}: ${err.message}`);
     }
   }
 
-  // ── Call Re-Rank API ────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  //  API INTEGRATION
+  // ══════════════════════════════════════════════════════════════════════════
+
   async function callRerankAPI(products, query) {
     const payload = {
       query: query,
@@ -261,23 +403,32 @@
 
     return new Promise((resolve, reject) => {
       chrome.runtime.sendMessage({ type: "rerank", payload }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
         if (response && response.ok) resolve(response.data);
         else reject(new Error(response ? response.error : "No response from background"));
       });
     });
   }
 
-  // ── Reorder DOM ─────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  //  DOM REORDERING — FLIP animation technique
+  // ══════════════════════════════════════════════════════════════════════════
+
   function reorderDOM(products, rankedResults) {
-    // Map asin → result data
     const resultMap = {};
     rankedResults.results.forEach((r) => {
       resultMap[r.product_id] = r;
     });
 
-    // Get the search results container
-    const container = products[0]?.element?.parentElement;
-    if (!container) return;
+    // Find the right container — the common parent of all product cards
+    const container = findCommonParent(products.map((p) => p.element));
+    if (!container) {
+      LOG("Could not find common parent container for reordering");
+      return;
+    }
 
     // Save original order
     originalOrder = products.map((p) => ({
@@ -285,26 +436,26 @@
       element: p.element,
     }));
 
-    // Sort products by new_rank
+    // Sort by new_rank
     const sorted = [...products].sort((a, b) => {
       const ra = resultMap[a.asin]?.new_rank ?? 999;
       const rb = resultMap[b.asin]?.new_rank ?? 999;
       return ra - rb;
     });
 
-    // Animate: first capture current positions
+    // FLIP: capture current positions
     const positions = new Map();
     products.forEach((p) => {
       const rect = p.element.getBoundingClientRect();
       positions.set(p.asin, { top: rect.top, left: rect.left });
     });
 
-    // Reorder DOM elements
+    // Reorder DOM
     sorted.forEach((p) => {
       container.appendChild(p.element);
     });
 
-    // Animate from old position to new (FLIP technique)
+    // FLIP: animate from old to new position
     sorted.forEach((p) => {
       const oldPos = positions.get(p.asin);
       const newRect = p.element.getBoundingClientRect();
@@ -313,27 +464,47 @@
         const dy = oldPos.top - newRect.top;
         p.element.style.transform = `translate(${dx}px, ${dy}px)`;
         p.element.style.transition = "none";
-        // Force reflow
-        p.element.offsetHeight;
+        p.element.offsetHeight; // force reflow
         p.element.style.transition = "transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94)";
         p.element.style.transform = "translate(0, 0)";
       }
     });
 
-    // Add rank badges + score overlays
+    // Add rank badges
     sorted.forEach((p) => {
       const result = resultMap[p.asin];
-      if (!result) return;
-      addRankBadge(p.element, result);
+      if (result) addRankBadge(p.element, result);
     });
 
     isReranked = true;
     updateFABState();
+    LOG(`Reordered ${sorted.length} products`);
   }
 
-  // ── Rank Badge on Card ──────────────────────────────────────────────────
+  // Find the closest common parent of all elements
+  function findCommonParent(elements) {
+    if (!elements.length) return null;
+    if (elements.length === 1) return elements[0].parentElement;
+
+    // If all share the same parent, use that
+    const firstParent = elements[0].parentElement;
+    if (elements.every((el) => el.parentElement === firstParent)) {
+      return firstParent;
+    }
+
+    // Otherwise walk up from first element and find first ancestor containing all
+    let ancestor = firstParent;
+    while (ancestor && ancestor !== document.body) {
+      if (elements.every((el) => ancestor.contains(el))) {
+        return ancestor;
+      }
+      ancestor = ancestor.parentElement;
+    }
+    return firstParent; // fallback
+  }
+
+  // ── Rank Badge ──────────────────────────────────────────────────────────
   function addRankBadge(element, result) {
-    // Remove existing badge
     const existing = element.querySelector(".srr-badge");
     if (existing) existing.remove();
 
@@ -374,21 +545,18 @@
   function restoreOriginalOrder() {
     if (!originalOrder.length) return;
 
-    const container = originalOrder[0].element.parentElement;
+    const container = findCommonParent(originalOrder.map((i) => i.element));
 
-    // Capture current positions
     const positions = new Map();
     originalOrder.forEach((item) => {
       const rect = item.element.getBoundingClientRect();
       positions.set(item.asin, { top: rect.top, left: rect.left });
     });
 
-    // Restore original DOM order
     originalOrder.forEach((item) => {
       container.appendChild(item.element);
     });
 
-    // Animate
     originalOrder.forEach((item) => {
       const oldPos = positions.get(item.asin);
       const newRect = item.element.getBoundingClientRect();
@@ -402,16 +570,16 @@
         item.element.style.transform = "translate(0, 0)";
       }
 
-      // Remove badges
       const badge = item.element.querySelector(".srr-badge");
       if (badge) badge.remove();
     });
 
     isReranked = false;
     updateFABState();
+    LOG("Restored original order");
   }
 
-  // ── Update FAB appearance ───────────────────────────────────────────────
+  // ── FAB State ───────────────────────────────────────────────────────────
   function updateFABState() {
     const btn = document.getElementById("srr-rerank-btn");
     if (!btn) return;
@@ -424,17 +592,20 @@
     }
   }
 
-  // ── Extract query from Amazon URL ───────────────────────────────────────
+  // ── Extract Query ───────────────────────────────────────────────────────
   function getSearchQuery() {
     const params = new URLSearchParams(window.location.search);
-    return params.get("k") || "";
+    return params.get("k") || params.get("field-keywords") || "";
   }
 
-  // ── Main Re-Rank Flow ──────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  //  MAIN FLOW
+  // ══════════════════════════════════════════════════════════════════════════
+
   async function runRerank() {
     const query = getSearchQuery();
     if (!query) {
-      alert("Could not detect search query.");
+      showError("Could not detect search query from URL.");
       return;
     }
 
@@ -443,10 +614,16 @@
     try {
       // Step 0: Scrape
       setPipelineStep(0);
+      await sleep(200);
       const products = scrapeProducts();
       if (products.length === 0) {
-        alert("No products found on this page.");
         removePipeline();
+        showError(
+          `No products found. The scraper found 0 product cards.\n` +
+          `Debug: data-asin count = ${document.querySelectorAll('[data-asin]').length}, ` +
+          `s-search-result count = ${document.querySelectorAll('[data-component-type="s-search-result"]').length}, ` +
+          `cel-widget count = ${document.querySelectorAll('[data-cel-widget^="search_result_"]').length}`
+        );
         return;
       }
       await sleep(300);
@@ -456,7 +633,7 @@
       await fetchProductDetails(products);
       await sleep(200);
 
-      // Step 2-4: API handles feature extraction + scoring + trust
+      // Step 2-4: API
       setPipelineStep(2);
       await sleep(350);
       setPipelineStep(3);
@@ -472,27 +649,26 @@
 
       lastMetrics = apiResult;
       const sponsoredBefore = products.filter((p) => p.sponsored).length;
-      const sponsoredAfter = apiResult.results
-        .slice(0, 5)
-        .filter((r) => r.sponsored).length;
+      const sponsoredAfter = apiResult.results.slice(0, 5).filter((r) => r.sponsored).length;
 
       reorderDOM(products, apiResult);
       removePipeline();
       showMetrics(apiResult, sponsoredBefore, sponsoredAfter);
     } catch (err) {
       removePipeline();
-      console.error("[Search Re-Ranker]", err);
-      showError("Failed to re-rank. Is the FastAPI backend running on localhost:8000?");
+      LOG("Error:", err);
+      showError("Re-rank failed: " + err.message);
     }
   }
 
-  // ── Error toast ─────────────────────────────────────────────────────────
+  // ── Error Toast ─────────────────────────────────────────────────────────
   function showError(msg) {
+    LOG("ERROR:", msg);
     const toast = document.createElement("div");
     toast.className = "srr-toast srr-toast-error";
     toast.textContent = msg;
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 5000);
+    setTimeout(() => toast.remove(), 7000);
   }
 
   function sleep(ms) {
@@ -501,5 +677,5 @@
 
   // ── Init ────────────────────────────────────────────────────────────────
   injectFAB();
-  console.log("[Search Re-Ranker] Content script loaded on Amazon search page.");
+  LOG(`Loaded on ${ORIGIN}. data-asin elements: ${document.querySelectorAll('[data-asin]').length}`);
 })();

@@ -1,12 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Search Re-Ranker",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "ML-powered search re-ranking — LambdaMART + Isolation Forest + NSGA-II on live Amazon results",
   "permissions": ["activeTab"],
   "host_permissions": [
     "https://www.amazon.com/*",
     "https://www.amazon.in/*",
+    "https://www.amazon.co.uk/*",
+    "https://www.amazon.de/*",
+    "https://www.amazon.ca/*",
     "http://localhost:8000/*"
   ],
   "background": {
@@ -15,10 +18,11 @@
   "content_scripts": [
     {
       "matches": [
-        "https://www.amazon.com/s?*",
-        "https://www.amazon.com/s/*",
-        "https://www.amazon.in/s?*",
-        "https://www.amazon.in/s/*"
+        "https://www.amazon.com/s*",
+        "https://www.amazon.in/s*",
+        "https://www.amazon.co.uk/s*",
+        "https://www.amazon.de/s*",
+        "https://www.amazon.ca/s*"
       ],
       "js": ["content.js"],
       "css": ["content.css"],
