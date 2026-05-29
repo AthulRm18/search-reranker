@@ -551,58 +551,66 @@ export default function App() {
       {/* ── Welcome/Load Modal ───────────────────────────────── */}
       {showLoadModal && (
         <div className="rr-modal-overlay">
-          <div className="rr-modal-card" style={{ maxWidth: 500, padding: 28 }}>
-            <div className="rr-modal-header" style={{ marginBottom: 12 }}>
+          <div className="rr-modal-card" style={{ maxWidth: 540, padding: 32 }}>
+            <div className="rr-modal-header" style={{ marginBottom: 16 }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <span className="rr-modal-title" style={{ fontSize: 20, fontWeight: 700, textTransform: "none", letterSpacing: "-0.02em" }}>
+                <span className="rr-modal-title" style={{ fontSize: 22, fontWeight: 700, textTransform: "none", letterSpacing: "-0.025em" }}>
                   Search Re-Ranker
                 </span>
-                <span style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.45 }}>
-                  Amazon's search algorithm is optimized for seller revenue — not for you. This system fixes that.
+                <span style={{ fontSize: 13.5, color: "var(--text-muted)", lineHeight: 1.5, fontWeight: 500 }}>
+                  Amazon ranks what makes them money. This ranks what's actually best for you.
                 </span>
               </div>
             </div>
-            <div className="rr-modal-body" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div className="rr-modal-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div>
                 <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text)", marginBottom: 4 }}>
-                  How it works:
+                  The Problem
                 </div>
-                <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5, color: "var(--text-muted)" }}>
-                  Real Amazon search results get scraped and passed through a LambdaMART ranking model trained on 1.4 million Amazon query-product pairs. A multi-objective optimizer (NSGA-II) then finds the best trade-off between three signals simultaneously — relevance to your query, review authenticity, and price fairness — rather than maximizing any single metric. Sponsored products get penalized unless they genuinely match your search.
+                <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.55, color: "var(--text-muted)" }}>
+                  Every major e-commerce platform runs a search algorithm with one real objective — maximize revenue. Sponsored products occupy the top positions regardless of quality. High-margin items rank above better-reviewed alternatives. The result is a search experience that looks helpful but is fundamentally misaligned with what you're looking for.
                 </p>
               </div>
               <div>
                 <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text)", marginBottom: 4 }}>
-                  What's different:
+                  What This System Does
                 </div>
-                <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5, color: "var(--text-muted)" }}>
-                  Most re-ranking systems optimize one objective. This one runs a Pareto optimization across three competing signals and picks the solution closest to the utopia point — the same approach used in production recommendation systems at scale.
+                <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.55, color: "var(--text-muted)" }}>
+                  Search Re-Ranker intercepts product listings and re-scores them using a machine learning pipeline built on Amazon's own data. It optimizes for three things simultaneously — how relevant a product actually is to your query, how trustworthy its reviews are, and whether its price reflects its quality. Products that paid to be at the top get evaluated on merit, not budget.
                 </p>
               </div>
               <div>
                 <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text)", marginBottom: 4 }}>
-                  Numbers:
+                  How It's Built
                 </div>
-                <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5, color: "var(--text-muted)" }}>
-                  <strong>NDCG@10 of 0.9114</strong> on the Amazon ESCI benchmark — Amazon's own human-labeled relevance dataset with 1.8M query-product pairs. Sponsored product bias reduced by <strong>~31%</strong> in top-5 results.
+                <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.55, color: "var(--text-muted)" }}>
+                  The ranking model is a LambdaMART algorithm trained on 1.4 million real Amazon query-product pairs from the ESCI dataset — a benchmark Amazon themselves released for search quality research. A multi-objective optimizer runs a Pareto optimization across all three signals, finding the mathematically optimal balance rather than collapsing everything into a single score. Review authenticity is evaluated using an Isolation Forest anomaly detector trained on 500,000 Amazon reviews, which flags suspicious rating patterns and prolific fake reviewers as a penalty signal fed back into the ranker.
                 </p>
               </div>
               <div>
                 <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text)", marginBottom: 4 }}>
-                  Stack:
+                  Results
                 </div>
-                <p style={{ margin: 0, fontSize: 11.5, fontFamily: "var(--font-mono)", lineHeight: 1.5, color: "var(--text-muted)" }}>
-                  LightGBM LambdaMART · NSGA-II (pymoo) · Isolation Forest fake review detector · FastAPI · React · Amazon ESCI Dataset
+                <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.55, color: "var(--text-muted)" }}>
+                  Achieves <strong>NDCG@10 of 0.9114</strong> on the Amazon ESCI benchmark. Sponsored product presence in top-5 results reduced by <strong>~31%</strong>. The system surfaces products that ranked 6th–10th in the original listing into the top 3 when they genuinely match the query better than what was placed there commercially.
+                </p>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text)", marginBottom: 4 }}>
+                  Tech Stack
+                </div>
+                <p style={{ margin: 0, fontSize: 11, fontFamily: "var(--font-mono)", lineHeight: 1.5, color: "var(--text-muted)" }}>
+                  LightGBM LambdaMART · NSGA-II Pareto Optimization · Isolation Forest · FastAPI · React · Amazon ESCI 1.8M pairs
                 </p>
               </div>
             </div>
-            <div className="rr-modal-footer" style={{ marginTop: 8 }}>
+            <div className="rr-modal-footer" style={{ marginTop: 12 }}>
               <button
                 className="rr-btn rr-btn--primary"
                 onClick={() => setShowLoadModal(false)}
-                style={{ width: "100%", justifyContent: "center" }}
+                style={{ width: "100%", justifyContent: "center", height: 36, fontSize: 13, fontWeight: 600 }}
               >
-                See it in action →
+                Try it live →
               </button>
             </div>
           </div>
