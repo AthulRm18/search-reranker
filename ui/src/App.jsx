@@ -11,7 +11,7 @@ import {
   Loader2, Check, ChevronDown,
 } from "lucide-react"
 
-const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "https://atl5-rerank.hf.space" : "");
+const API_BASE = import.meta.env.VITE_API_URL || "https://atl5-rerank.hf.space";
 
 // ── Brand Logo — matches extension icon (up/down arrows) ─────────────────
 function ReRankLogo({ size = 28, className = "" }) {
