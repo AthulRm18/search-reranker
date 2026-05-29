@@ -6,9 +6,11 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
-        rewrite: (path) => path.replace(/^\/api/, '')
+      '/search': {
+        target: 'http://localhost:8000'
+      },
+      '/rerank': {
+        target: 'http://localhost:8000'
       }
     }
   }

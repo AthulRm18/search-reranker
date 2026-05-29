@@ -11,7 +11,7 @@ import {
   Loader2, Check, ChevronDown,
 } from "lucide-react"
 
-const API_BASE = import.meta.env.VITE_API_URL || "";
+const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "https://atl5-rerank.hf.space" : "");
 
 // ── Brand Logo — matches extension icon (up/down arrows) ─────────────────
 function ReRankLogo({ size = 28, className = "" }) {
@@ -299,7 +299,7 @@ export default function App() {
     setMetrics(null)
     setAnimating(false)
     try {
-      const res = await axios.get(`${API_BASE}/api/search?q=${encodeURIComponent(query)}&n=10`)
+      const res = await axios.get(`${API_BASE}/search?q=${encodeURIComponent(query)}&n=10`)
       setOriginal(res.data.products)
       setTotalMatches(res.data.total_matches)
     } catch {
@@ -316,7 +316,7 @@ export default function App() {
     setError(null)
     setAnimating(false)
     try {
-      const res = await axios.post(`${API_BASE}/api/rerank`, { query, products: original, mode })
+      const res = await axios.post(`${API_BASE}/rerank`, { query, products: original, mode })
       runPipeline(() => {
         setTimeout(() => {
           setReranked(res.data.results)
