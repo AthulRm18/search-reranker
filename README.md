@@ -253,7 +253,6 @@ The app homepage is configured at **search-reranker.vercel.app** for the web UI.
 - Trust scoring is heuristic and should not be interpreted as robust fake-review detection.
 - The extension currently depends on a local backend at `localhost:8000`.
 - Required training/data artifacts are not bundled in the repository.
-- This is a prototype and portfolio project, not a production ecommerce ranking system.
 
 ## Portfolio / resume framing
 
