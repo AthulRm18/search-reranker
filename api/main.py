@@ -279,6 +279,7 @@ def ndcg_at_k(scores, k=10):
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.post("/rerank", response_model=RankResponse)
+@app.post("/api/rerank", response_model=RankResponse)
 def rerank(req: RankRequest):
     if not req.products:
         raise HTTPException(status_code=400, detail="No products provided")
@@ -398,6 +399,7 @@ def health():
     return {"status": "ok", "model": "ranker_v1.lgb", "features": len(FEATURE_COLS), "version": "2.0-live-trust"}
 
 @app.get("/search")
+@app.get("/api/search")
 def search_products(q: str, n: int = 10):
     """Search real ESCI products and return with simulated sponsored injection"""
     q_lower = q.lower()
