@@ -698,6 +698,22 @@
       removePipeline();
       showMetrics(apiResult);
 
+      // Log stats for aggregation (for presentation numbers)
+      try {
+        chrome.runtime.sendMessage({
+          type: "logStats",
+          payload: {
+            query: query,
+            product_count: products.length,
+            sponsored_found: apiResult.sponsored_found || 0,
+            sponsored_demoted: apiResult.sponsored_demoted || 0,
+            low_trust_demoted: apiResult.low_trust_demoted || 0,
+            avg_trust_before: apiResult.avg_trust_bottom5 || 0,
+            avg_trust_after: apiResult.avg_trust_top5 || 0,
+          }
+        });
+      } catch (_) { /* stats logging is best-effort */ }
+
     } catch (err) {
       removePipeline();
       LOG("Error:", err);

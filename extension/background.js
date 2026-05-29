@@ -29,4 +29,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     return true;
   }
+
+  if (msg.type === "logStats") {
+    fetch(`${API_BASE}/stats/log`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(msg.payload),
+    }).catch(() => {}); // best-effort, don't block
+
+    return false;
+  }
 });

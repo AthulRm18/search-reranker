@@ -436,3 +436,161 @@ def search_products(q: str, n: int = 10):
         })
 
     return {"products": products, "total_matches": int(mask.sum())}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  STATS — collect real usage numbers for presentation
+# ══════════════════════════════════════════════════════════════════════════
+
+stats_store = {
+    "total_reranks": 0,
+    "total_products_analyzed": 0,
+    "total_sponsored_found": 0,
+    "total_sponsored_demoted": 0,
+    "total_low_trust_demoted": 0,
+    "total_suspicious_five_star": 0,
+    "trust_improvements": [],     # (before_avg, after_avg) per rerank
+    "searches": [],               # query, timestamp, product_count
+}
+
+@app.post("/stats/log")
+def log_stats(data: dict):
+    """Extension calls this after each rerank to log real numbers"""
+    stats_store["total_reranks"] += 1
+    stats_store["total_products_analyzed"] += data.get("product_count", 0)
+    stats_store["total_sponsored_found"] += data.get("sponsored_found", 0)
+    stats_store["total_sponsored_demoted"] += data.get("sponsored_demoted", 0)
+    stats_store["total_low_trust_demoted"] += data.get("low_trust_demoted", 0)
+
+    if data.get("avg_trust_before") and data.get("avg_trust_after"):
+        stats_store["trust_improvements"].append({
+            "before": data["avg_trust_before"],
+            "after": data["avg_trust_after"],
+        })
+
+    stats_store["searches"].append({
+        "query": data.get("query", ""),
+        "products": data.get("product_count", 0),
+    })
+
+    return {"ok": True}
+
+@app.get("/stats")
+def get_stats():
+    """Get aggregate stats for presentation"""
+    s = stats_store
+    trust_imps = s["trust_improvements"]
+    avg_improvement = 0
+    if trust_imps:
+        avg_improvement = np.mean([t["after"] - t["before"] for t in trust_imps])
+
+    return {
+        "total_reranks": s["total_reranks"],
+        "total_products_analyzed": s["total_products_analyzed"],
+        "total_sponsored_found": s["total_sponsored_found"],
+        "total_sponsored_demoted": s["total_sponsored_demoted"],
+        "total_low_trust_demoted": s["total_low_trust_demoted"],
+        "avg_trust_improvement": round(float(avg_improvement), 4),
+        "avg_products_per_search": round(s["total_products_analyzed"] / max(s["total_reranks"], 1), 1),
+        "avg_sponsored_per_search": round(s["total_sponsored_found"] / max(s["total_reranks"], 1), 1),
+        "searches_logged": len(s["searches"]),
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  EVALUATE — generate before-vs-after comparison report
+# ══════════════════════════════════════════════════════════════════════════
+
+@app.post("/evaluate")
+def evaluate(req: RankRequest):
+    """
+    Returns a detailed before-vs-after comparison for presentation.
+    Shows exactly what changed and why.
+    """
+    if not req.products:
+        raise HTTPException(status_code=400, detail="No products")
+
+    # compute all scores
+    features, trust_scores_list, trust_signals = [], [], []
+    for p in req.products:
+        feat = extract_features(req.query, p)
+        features.append([feat[f] for f in FEATURE_COLS])
+        trust, signals = compute_live_trust(p)
+        trust_scores_list.append(trust)
+        trust_signals.append(signals)
+
+    X = np.array(features)
+    relevance = model.predict(X)
+    trust_arr = np.array(trust_scores_list)
+
+    def norm(x):
+        r = x.max() - x.min()
+        return (x - x.min()) / r if r > 0 else np.ones_like(x) * 0.5
+
+    rel_norm = norm(relevance)
+    trust_norm = norm(trust_arr) if trust_arr.max() != trust_arr.min() else trust_arr
+
+    sponsored_penalty = np.array([0.7 if p.sponsored else 1.0 for p in req.products])
+    w = {"balanced": (0.6, 0.2, 0.2), "relevance": (0.9, 0.05, 0.05), "fair": (0.4, 0.3, 0.3)}.get(req.mode, (0.6, 0.2, 0.2))
+    final = (w[0] * rel_norm + w[1] * trust_norm + w[2] * (sponsored_penalty)) * sponsored_penalty
+    new_order = np.argsort(final)[::-1]
+
+    # Build before/after comparison
+    before = []
+    for i, p in enumerate(req.products):
+        before.append({
+            "rank": i + 1,
+            "title": p.product_title[:80],
+            "asin": p.product_id,
+            "sponsored": p.sponsored,
+            "rating": p.rating,
+            "review_count": p.review_count,
+            "trust_score": round(trust_scores_list[i], 3),
+            "relevance_score": round(float(rel_norm[i]), 3),
+        })
+
+    after = []
+    for new_rank, idx in enumerate(new_order):
+        p = req.products[idx]
+        after.append({
+            "rank": new_rank + 1,
+            "title": p.product_title[:80],
+            "asin": p.product_id,
+            "sponsored": p.sponsored,
+            "rating": p.rating,
+            "review_count": p.review_count,
+            "trust_score": round(trust_scores_list[idx], 3),
+            "relevance_score": round(float(rel_norm[idx]), 3),
+            "rank_change": (idx + 1) - (new_rank + 1),
+            "trust_signals": trust_signals[idx],
+        })
+
+    # Aggregate comparison
+    top5_before_indices = list(range(min(5, len(req.products))))
+    top5_after_indices = list(new_order[:5])
+
+    comparison = {
+        "query": req.query,
+        "mode": req.mode,
+        "total_products": len(req.products),
+        "before_top5": before[:5],
+        "after_top5": after[:5],
+        "full_before": before,
+        "full_after": after,
+        "summary": {
+            "sponsored_in_top5_before": sum(1 for i in top5_before_indices if req.products[i].sponsored),
+            "sponsored_in_top5_after": sum(1 for i in top5_after_indices if req.products[i].sponsored),
+            "avg_trust_top5_before": round(float(np.mean([trust_scores_list[i] for i in top5_before_indices])), 3),
+            "avg_trust_top5_after": round(float(np.mean([trust_scores_list[i] for i in top5_after_indices])), 3),
+            "avg_rating_top5_before": round(float(np.mean([req.products[i].rating or 0 for i in top5_before_indices])), 2),
+            "avg_rating_top5_after": round(float(np.mean([req.products[i].rating or 0 for i in top5_after_indices])), 2),
+            "avg_reviews_top5_before": round(float(np.mean([req.products[i].review_count or 0 for i in top5_before_indices]))),
+            "avg_reviews_top5_after": round(float(np.mean([req.products[i].review_count or 0 for i in top5_after_indices]))),
+            "suspicious_products": sum(1 for s in trust_signals if s.get("five_star_ratio") and s["five_star_ratio"] > 0.8),
+            "low_trust_in_top5_before": sum(1 for i in top5_before_indices if trust_scores_list[i] < 0.4),
+            "low_trust_in_top5_after": sum(1 for i in top5_after_indices if trust_scores_list[i] < 0.4),
+            "products_with_live_trust": sum(1 for s in trust_signals if s.get("source") == "live"),
+        }
+    }
+
+    return comparison
