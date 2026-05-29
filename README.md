@@ -1,3 +1,13 @@
+---
+title: Search Re-Ranker
+emoji: 🔍
+colorFrom: blue
+colorTo: gray
+sdk: docker
+app_port: 8000
+pinned: false
+---
+
 # Search Re-Ranker
 
 An applied ML prototype that re-ranks ecommerce search results around relevance, review trust signals, and sponsored-result exposure. The project includes a FastAPI ranking service, trained LightGBM LambdaMART model, review-risk scoring pipeline, React demo dashboard, and a Chrome extension that can reorder live Amazon search-result cards.
